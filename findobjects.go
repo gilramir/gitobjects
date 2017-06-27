@@ -2,6 +2,7 @@ package gitobjects
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"github.com/crewjam/errset"
 	"github.com/pkg/errors"
@@ -13,8 +14,10 @@ import (
 	"sync"
 )
 
-//	objChan, errChan, err := gitObjects.GetObjectsOfType("commit")
-func (self *GitRepo) StreamObjectsOfType(objectType string) (<-chan Object, <-chan error) {
+// Stream all Objects of a certain type on the Object channel. Once done reading the Object
+// Channel, read the error channel to see if the stream stopped due to any error. The context
+// can be used to cancel the request in progress.
+func (self *GitRepo) StreamObjectsOfType(ctx context.Context, objectType string) (<-chan Object, <-chan error) {
 
 	packFileChan := make(chan string)
 	looseObjectSha1Chan := make(chan string)
@@ -23,10 +26,10 @@ func (self *GitRepo) StreamObjectsOfType(objectType string) (<-chan Object, <-ch
 	errorChan := make(chan error, 1)
 
 	// One go-routine to find the pack files
-	go _findPackFiles(self.gitDir, packFileChan)
+	go _findPackFiles(ctx, self.gitDir, packFileChan)
 
 	// One go-routine to find the loose object files
-	go _findLooseObjectFiles(self.gitDir, looseObjectSha1Chan, errorChan)
+	go _findLooseObjectFiles(ctx, self.gitDir, looseObjectSha1Chan, errorChan)
 
 	// Start n pack file processing go-routines
 	numPackProcessors := 2
@@ -35,7 +38,7 @@ func (self *GitRepo) StreamObjectsOfType(objectType string) (<-chan Object, <-ch
 	for i := 0; i < numPackProcessors; i++ {
 		packObjectSha1Chan := make(chan string)
 		packProcessorChans[i] = packObjectSha1Chan
-		go _parsePackFile(self, packFileChan, packObjectSha1Chan, errorChan)
+		go _parsePackFile(ctx, self, packFileChan, packObjectSha1Chan, errorChan)
 	}
 
 	// Launch a go-routine to merge all the object sha1 chans into one
@@ -49,7 +52,7 @@ func (self *GitRepo) StreamObjectsOfType(objectType string) (<-chan Object, <-ch
 	for i := 0; i < numObjectProcessors; i++ {
 		objectProcessorChan := make(chan Object)
 		objectProcessorChans[i] = objectProcessorChan
-		go _parseObjectSha1(self, objectType, objectSha1Chan, objectProcessorChan, errorChan)
+		go _parseObjectSha1(ctx, self, objectType, objectSha1Chan, objectProcessorChan, errorChan)
 	}
 
 	// Launch a go-routine to merge the object processor chans into one.
@@ -61,7 +64,7 @@ func (self *GitRepo) StreamObjectsOfType(objectType string) (<-chan Object, <-ch
 }
 
 // Examine the .git directory, looking for pack files
-func _findPackFiles(gitDir string, packFileChan chan<- string) {
+func _findPackFiles(ctx context.Context, gitDir string, packFileChan chan<- string) {
 	defer close(packFileChan)
 
 	globPattern := filepath.Join(gitDir, "objects", "pack", "pack-*.idx")
@@ -73,12 +76,18 @@ func _findPackFiles(gitDir string, packFileChan chan<- string) {
 	}
 
 	for _, filename := range packFiles {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			break
+		}
 		packFileChan <- filename
 	}
 }
 
 // Parse each pack file and send the object sha1s contained within it
-func _parsePackFile(gitRepo *GitRepo, packFileChan <-chan string, packObjectSha1Chan chan<- string,
+func _parsePackFile(ctx context.Context, gitRepo *GitRepo, packFileChan <-chan string, packObjectSha1Chan chan<- string,
 	errorChan chan<- error) {
 
 	defer close(packObjectSha1Chan)
@@ -118,6 +127,13 @@ func _parsePackFile(gitRepo *GitRepo, packFileChan <-chan string, packObjectSha1
 			}
 
 			// The 2nd field has the sha1
+			select {
+			case <-ctx.Done():
+				_ = packFileObject.Close()
+				return
+			default:
+				break
+			}
 			packObjectSha1Chan <- fields[1]
 		}
 
@@ -143,7 +159,7 @@ func _parsePackFile(gitRepo *GitRepo, packFileChan <-chan string, packObjectSha1
 }
 
 // Find all loose object files
-func _findLooseObjectFiles(gitDir string, looseObjectSha1Chan chan<- string, errorChan chan<- error) {
+func _findLooseObjectFiles(ctx context.Context, gitDir string, looseObjectSha1Chan chan<- string, errorChan chan<- error) {
 	defer close(looseObjectSha1Chan)
 
 	sha1FilenameRegex, err := regexp.Compile(`^[0-9a-f]{38}$`)
@@ -156,6 +172,8 @@ func _findLooseObjectFiles(gitDir string, looseObjectSha1Chan chan<- string, err
 		panic(err.Error())
 	}
 
+	cancelSignalError := errors.New("stopped because of context cancel")
+
 	err = filepath.Walk(filepath.Join(gitDir, "objects"),
 		func(path string, info os.FileInfo, err error) error {
 			if info.IsDir() {
@@ -166,13 +184,19 @@ func _findLooseObjectFiles(gitDir string, looseObjectSha1Chan chan<- string, err
 				parentPath := filepath.Dir(path)
 				parentBase := filepath.Base(parentPath)
 				if sha1DirectoryRegex.MatchString(parentBase) {
+					select {
+					case <-ctx.Done():
+						return cancelSignalError
+					default:
+						break
+					}
 					looseObjectSha1Chan <- parentBase + base
 				}
 			}
 			return nil
 		})
 
-	if err != nil {
+	if err != nil && err != cancelSignalError {
 		errorChan <- err
 		return
 	}
@@ -180,7 +204,7 @@ func _findLooseObjectFiles(gitDir string, looseObjectSha1Chan chan<- string, err
 
 // Take a sha1 and check the object type; if it is what we want, create an Object
 // from it and send it.
-func _parseObjectSha1(gitRepo *GitRepo, objectType string, objectSha1Chan <-chan string,
+func _parseObjectSha1(ctx context.Context, gitRepo *GitRepo, objectType string, objectSha1Chan <-chan string,
 	objectProcessorChan chan<- Object, errorChan chan<- error) {
 
 	defer close(objectProcessorChan)
@@ -193,6 +217,12 @@ func _parseObjectSha1(gitRepo *GitRepo, objectType string, objectSha1Chan <-chan
 		}
 		type_ := strings.TrimRight(string(output), "\n")
 		if type_ == objectType {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				break
+			}
 			switch objectType {
 			case "commit":
 				objectProcessorChan <- &Commit{
