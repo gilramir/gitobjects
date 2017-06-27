@@ -2,7 +2,6 @@ package gitobjects
 
 import (
 	"github.com/pkg/errors"
-	//	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -61,8 +60,6 @@ func (self *GitRepo) Command(cmdv []string) *exec.Cmd {
 
 	cmd := exec.Command("git", cmdv...)
 	cmd.Dir = self.gitDir
-	//	cmd.Stdout = os.Stdout
-	//	cmd.Stderr = os.Stderr
 	return cmd
 }
 
