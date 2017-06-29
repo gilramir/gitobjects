@@ -7,11 +7,14 @@ import (
 	"strings"
 )
 
-type GitRepo struct {
+type Repo struct {
 	gitDir string
+
+	// Key = sha1, Value = *Tree
+	TreeCache map[string]*Tree
 }
 
-func NewGitRepo(directory string) (*GitRepo, error) {
+func NewRepo(directory string) (*Repo, error) {
 	var gitDir string
 
 	// empty tring == CWD
@@ -44,16 +47,18 @@ func NewGitRepo(directory string) (*GitRepo, error) {
 		gitDir = filepath.Join(absDirectory, gitDir)
 	}
 
-	return &GitRepo{
-		gitDir: gitDir,
+	treeCache := make(map[string]*Tree)
+	return &Repo{
+		gitDir:    gitDir,
+		TreeCache: treeCache,
 	}, nil
 }
 
-func (self *GitRepo) GitDir() string {
+func (self *Repo) GitDir() string {
 	return self.gitDir
 }
 
-func (self *GitRepo) Command(cmdv []string) *exec.Cmd {
+func (self *Repo) Command(cmdv []string) *exec.Cmd {
 	if len(cmdv) == 0 {
 		panic("Empty cmdv")
 	}
@@ -63,18 +68,18 @@ func (self *GitRepo) Command(cmdv []string) *exec.Cmd {
 	return cmd
 }
 
-func (self *GitRepo) Run(cmdv []string) error {
+func (self *Repo) Run(cmdv []string) error {
 	cmd := self.Command(cmdv)
 	return cmd.Run()
 }
 
-func (self *GitRepo) CmdOutput(cmdv []string) ([]byte, error) {
+func (self *Repo) CmdOutput(cmdv []string) ([]byte, error) {
 	cmd := self.Command(cmdv)
 	cmd.Stdout = nil
 	return cmd.Output()
 }
 
-func (self *GitRepo) CmdCombinedOutput(cmdv []string) ([]byte, error) {
+func (self *Repo) CmdCombinedOutput(cmdv []string) ([]byte, error) {
 	cmd := self.Command(cmdv)
 	cmd.Stdout = nil
 	cmd.Stderr = nil

@@ -9,5 +9,5 @@ type Object interface {
 
 	// Do any activities that require reading from disk
 	// to populate internal information about the object
-	Instantiate(repo *GitRepo) error
+	Instantiate(repo *Repo) error
 }

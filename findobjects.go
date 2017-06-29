@@ -17,13 +17,33 @@ import (
 // Stream all Objects of a certain type on the Object channel. Once done reading the Object
 // Channel, read the error channel to see if the stream stopped due to any error. The context
 // can be used to cancel the request in progress.
-func (self *GitRepo) StreamObjectsOfType(ctx context.Context, objectType string) (<-chan Object, <-chan error) {
+func (self *Repo) StreamObjectsOfType(ctx context.Context, objectType string, jFactor int) (<-chan Object, <-chan error) {
 
-	packFileChan := make(chan string)
-	looseObjectSha1Chan := make(chan string)
+	responseChan := make(chan Object, jFactor)
 
 	// Buffered so it can be written to at any time
 	errorChan := make(chan error, 1)
+
+	switch objectType {
+	case "commit":
+		// no-op
+	case "tree":
+		// no-op
+	case "blob":
+		// no-op
+	default:
+		close(responseChan)
+		errorChan <- errors.Errorf("Unknown object type '%s'", objectType)
+		close(errorChan)
+		return responseChan, errorChan
+	}
+
+	if jFactor < 1 {
+		jFactor = 1
+	}
+
+	packFileChan := make(chan string)
+	looseObjectSha1Chan := make(chan string)
 
 	// One go-routine to find the pack files
 	go _findPackFiles(ctx, self.gitDir, packFileChan)
@@ -46,7 +66,7 @@ func (self *GitRepo) StreamObjectsOfType(ctx context.Context, objectType string)
 	go _mergeObjectSha1Chans(looseObjectSha1Chan, packProcessorChans, objectSha1Chan)
 
 	// Start n routines to process individual object sha1s
-	numObjectProcessors := 4
+	numObjectProcessors := jFactor
 	objectProcessorChans := make([]<-chan Object, numObjectProcessors)
 
 	for i := 0; i < numObjectProcessors; i++ {
@@ -57,7 +77,6 @@ func (self *GitRepo) StreamObjectsOfType(ctx context.Context, objectType string)
 
 	// Launch a go-routine to merge the object processor chans into one.
 	// This is the routine that sends responsed ot the user
-	responseChan := make(chan Object)
 	go _mergeProcessedObjectChans(objectProcessorChans, responseChan, errorChan)
 
 	return responseChan, errorChan
@@ -87,7 +106,7 @@ func _findPackFiles(ctx context.Context, gitDir string, packFileChan chan<- stri
 }
 
 // Parse each pack file and send the object sha1s contained within it
-func _parsePackFile(ctx context.Context, gitRepo *GitRepo, packFileChan <-chan string, packObjectSha1Chan chan<- string,
+func _parsePackFile(ctx context.Context, gitRepo *Repo, packFileChan <-chan string, packObjectSha1Chan chan<- string,
 	errorChan chan<- error) {
 
 	defer close(packObjectSha1Chan)
@@ -204,7 +223,7 @@ func _findLooseObjectFiles(ctx context.Context, gitDir string, looseObjectSha1Ch
 
 // Take a sha1 and check the object type; if it is what we want, create an Object
 // from it and send it.
-func _parseObjectSha1(ctx context.Context, gitRepo *GitRepo, objectType string, objectSha1Chan <-chan string,
+func _parseObjectSha1(ctx context.Context, gitRepo *Repo, objectType string, objectSha1Chan <-chan string,
 	objectProcessorChan chan<- Object, errorChan chan<- error) {
 
 	defer close(objectProcessorChan)
@@ -225,9 +244,35 @@ func _parseObjectSha1(ctx context.Context, gitRepo *GitRepo, objectType string, 
 			}
 			switch objectType {
 			case "commit":
-				objectProcessorChan <- &Commit{
+				commit := &Commit{
 					sha1: sha1,
 				}
+				err = commit.Instantiate(gitRepo)
+				if err != nil {
+					errorChan <- errors.Wrapf(err, "Instantiating commit %s", sha1)
+					return
+				}
+				objectProcessorChan <- commit
+			case "tree":
+				tree := &Tree{
+					sha1: sha1,
+				}
+				err = tree.Instantiate(gitRepo)
+				if err != nil {
+					errorChan <- errors.Wrapf(err, "Instantiating tree %s", sha1)
+					return
+				}
+				objectProcessorChan <- tree
+			case "blob":
+				blob := &Blob{
+					sha1: sha1,
+				}
+				err = blob.Instantiate(gitRepo)
+				if err != nil {
+					errorChan <- errors.Wrapf(err, "Instantiating blob %s", sha1)
+					return
+				}
+				objectProcessorChan <- blob
 			default:
 				panic(fmt.Sprintf("obj type %s not yet supported", objectType))
 			}

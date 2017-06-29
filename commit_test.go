@@ -11,7 +11,7 @@ func (s *MySuite) TestCommitInstantiate(c *C) {
 
 	// Stream the commit objects, with a time out in case the goroutine goes crazy.
 	ctx, _ := context.WithTimeout(context.Background(), time.Duration(3)*time.Second)
-	objectChan, errorChan := repo.StreamObjectsOfType(ctx, "commit")
+	objectChan, errorChan := repo.StreamObjectsOfType(ctx, "commit", 1)
 
 	var commitObj *Commit
 

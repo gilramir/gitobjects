@@ -3,13 +3,14 @@ package gitobjects
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"github.com/pkg/errors"
 	"strings"
 )
 
 type Commit struct {
-	sha1 string
-	//tree Tree
+	sha1     string
+	tree     *Tree
 	treeSha1 string
 
 	parentSha1s   []string
@@ -27,11 +28,11 @@ func (self *Commit) Sha1() string {
 	return self.sha1
 }
 
-func (self *Commit) Instantiate(repo *GitRepo) error {
+func (self *Commit) Instantiate(repo *Repo) error {
 	if self.sha1 == "" {
 		panic("Instantiate called on Commit that has no sha1")
 	}
-	output, err := repo.CmdOutput([]string{"cat-file", "commit", self.sha1})
+	output, err := repo.CmdOutput([]string{"cat-file", "-p", self.sha1})
 	if err != nil {
 		return errors.Wrapf(err, "Calling cat-file commit on %s", self.sha1)
 	}
@@ -77,4 +78,21 @@ func (self *Commit) Instantiate(repo *GitRepo) error {
 
 func (self *Commit) Message() string {
 	return self.msg
+}
+
+func (self *Commit) Tree(repo *Repo) (*Tree, error) {
+	if self.tree != nil {
+		return self.tree, nil
+	} else if self.treeSha1 == "" {
+		panic(fmt.Sprintf("Commit %s has no tree sha1", self.sha1))
+	}
+
+	self.tree = &Tree{
+		sha1: self.treeSha1,
+	}
+	err := self.tree.Instantiate(repo)
+	if err != nil {
+		return nil, errors.Wrapf(err, "Instantiating Commit %s Tree=%s", self.sha1, self.treeSha1)
+	}
+	return self.tree, nil
 }

@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func (s *MySuite) setupRepoWithReadme(c *C) (*GitRepo, string) {
+func (s *MySuite) setupRepoWithReadme(c *C) (*Repo, string) {
 	// Create a temp dir
 	dir, err := ioutil.TempDir(s.tmpDir, "")
 	c.Assert(err, IsNil)
@@ -24,8 +24,8 @@ func (s *MySuite) setupRepoWithReadme(c *C) (*GitRepo, string) {
 	err = cmd.Run()
 	c.Assert(err, IsNil)
 
-	// Create the GitRepo object
-	repo, err := NewGitRepo(repoDir)
+	// Create the Repo object
+	repo, err := NewRepo(repoDir)
 	c.Assert(err, IsNil)
 
 	// Touch a file
@@ -50,7 +50,7 @@ func (s *MySuite) setupRepoWithReadme(c *C) (*GitRepo, string) {
 	return repo, repoDir
 }
 
-func modifyReadmeAndPack(c *C, repo *GitRepo, repoDir string) {
+func modifyReadmeAndPack(c *C, repo *Repo, repoDir string) {
 	// Modify the same file
 	readmeFile := filepath.Join(repoDir, "README")
 	err := ioutil.WriteFile(readmeFile, []byte{'t', 'e', 's', 't', '\n', 'l', 'i', 'n', 'e', '2', '\n'}, 0666)
@@ -80,7 +80,7 @@ func modifyReadmeAndPack(c *C, repo *GitRepo, repoDir string) {
 
 }
 
-func addNotes(c *C, repo *GitRepo, repoDir string) {
+func addNotes(c *C, repo *Repo, repoDir string) {
 	// Commit a new file, to create a new loose object
 	// Touch a file
 	notesFile := filepath.Join(repoDir, "NOTES")
@@ -200,7 +200,7 @@ func (s *MySuite) TestStreamCommitObjects(c *C) {
 	// Stream the commit objects, with a time out in case
 	// the goroutine goes crazy.
 	ctx, _ := context.WithCancel(context.Background())
-	objectChan, errorChan := repo.StreamObjectsOfType(ctx, "commit")
+	objectChan, errorChan := repo.StreamObjectsOfType(ctx, "commit", 1)
 
 	timeout := time.NewTimer(time.Duration(3) * time.Second)
 	numFound := 0
@@ -237,7 +237,7 @@ func (s *MySuite) TestStreamCancel(c *C) {
 	// Stream the commit objects, with a time out in case
 	// the goroutine goes crazy.
 	ctx, cancelFunc := context.WithCancel(context.Background())
-	objectChan, errorChan := repo.StreamObjectsOfType(ctx, "commit")
+	objectChan, errorChan := repo.StreamObjectsOfType(ctx, "commit", 1)
 
 	timeout := time.NewTimer(time.Duration(3) * time.Second)
 	numFound := 0

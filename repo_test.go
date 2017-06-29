@@ -22,8 +22,8 @@ func (s *MySuite) TestRepoBareNoSuffix(c *C) {
 	err = cmd.Run()
 	c.Assert(err, IsNil)
 
-	// Create the GitRepo object
-	repo, err := NewGitRepo(repoDir)
+	// Create the Repo object
+	repo, err := NewRepo(repoDir)
 	c.Assert(err, IsNil)
 
 	// The repoDir *is* the git dir
@@ -44,8 +44,8 @@ func (s *MySuite) TestRepoBareWithSuffix(c *C) {
 	err = cmd.Run()
 	c.Assert(err, IsNil)
 
-	// Create the GitRepo object
-	repo, err := NewGitRepo(repoDir)
+	// Create the Repo object
+	repo, err := NewRepo(repoDir)
 	c.Assert(err, IsNil)
 
 	// The repoDir *is* the git dir
@@ -68,15 +68,15 @@ func (s *MySuite) TestRepoWorkspace(c *C) {
 
 	repoGitDir := filepath.Join(repoDir, ".git")
 
-	// Create the GitRepo object
-	repo, err := NewGitRepo(repoDir)
+	// Create the Repo object
+	repo, err := NewRepo(repoDir)
 	c.Assert(err, IsNil)
 
 	// The gitDir is ${workspaceDir}/.git
 	c.Check(repo.GitDir(), Equals, repoGitDir)
 
-	// Create another GitRepo object, pointing to the git dir
-	repo2, err := NewGitRepo(repoGitDir)
+	// Create another Repo object, pointing to the git dir
+	repo2, err := NewRepo(repoGitDir)
 	c.Assert(err, IsNil)
 
 	// The gitDir is ${workspaceDir}/.git
