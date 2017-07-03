@@ -112,6 +112,7 @@ func _parsePackFile(ctx context.Context, gitRepo *Repo, packFileChan <-chan stri
 	defer close(packObjectSha1Chan)
 
 	for packFile := range packFileChan {
+		//		log.Printf("Examining pack file %s", packFile)
 		packFileObject, err := os.Open(packFile)
 		if err != nil {
 			errorChan <- errors.Wrapf(err, "Opening pack file %s", packFile)
@@ -229,6 +230,7 @@ func _parseObjectSha1(ctx context.Context, gitRepo *Repo, objectType string, obj
 	defer close(objectProcessorChan)
 
 	for sha1 := range objectSha1Chan {
+		//		log.Printf("Examining git object file %s", sha1)
 		output, err := gitRepo.CmdOutput([]string{"cat-file", "-t", sha1})
 		if err != nil {
 			errorChan <- errors.Wrapf(err, "Getting object type for %s", sha1)
@@ -247,16 +249,25 @@ func _parseObjectSha1(ctx context.Context, gitRepo *Repo, objectType string, obj
 				commit := &Commit{
 					sha1: sha1,
 				}
+				//				log.Printf("Instantiating commit object")
 				err = commit.Instantiate(gitRepo)
 				if err != nil {
 					errorChan <- errors.Wrapf(err, "Instantiating commit %s", sha1)
 					return
 				}
+				// XXX Make this configurable
+				_, err = commit.InstantiateTree(gitRepo)
+				if err != nil {
+					errorChan <- errors.Wrapf(err, "Instantiating tee for commit %s", sha1)
+					return
+				}
+
 				objectProcessorChan <- commit
 			case "tree":
 				tree := &Tree{
 					sha1: sha1,
 				}
+				//				log.Printf("Instantiating tree object")
 				err = tree.Instantiate(gitRepo)
 				if err != nil {
 					errorChan <- errors.Wrapf(err, "Instantiating tree %s", sha1)
@@ -267,6 +278,7 @@ func _parseObjectSha1(ctx context.Context, gitRepo *Repo, objectType string, obj
 				blob := &Blob{
 					sha1: sha1,
 				}
+				//				log.Printf("Instantiating blob object")
 				err = blob.Instantiate(gitRepo)
 				if err != nil {
 					errorChan <- errors.Wrapf(err, "Instantiating blob %s", sha1)

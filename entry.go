@@ -2,7 +2,6 @@ package gitobjects
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
 )
 
 type Entry struct {
@@ -32,14 +31,10 @@ func (self *Entry) Sha1() string {
 	return self.sha1
 }
 
-func (self *Entry) Tree(repo *Repo) (*Tree, error) {
+func (self *Entry) Tree() *Tree {
 	if self.tree == nil {
 		panic(fmt.Sprintf("Entry %s has no tree", self.sha1))
 	}
 
-	err := self.tree.Instantiate(repo)
-	if err != nil {
-		return nil, errors.Wrapf(err, "Instantiating Entry %s tree", self.sha1)
-	}
-	return self.tree, nil
+	return self.tree
 }

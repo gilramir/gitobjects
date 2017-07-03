@@ -76,9 +76,9 @@ func (s *MySuite) TestStreamBlobPathsUnique(c *C) {
 			commit = obj.(*Commit)
 
 			// Stream each blobPath
-			tree, err := commit.Tree(repo)
-			c.Assert(err, IsNil)
-			blobPathChan, error2Chan := tree.StreamBlobPathsUnique(repo, sha1sSeen)
+			//tree, err := commit.InstantiateTree(repo)
+			//c.Assert(err, IsNil)
+			blobPathChan, error2Chan := commit.tree.StreamBlobPathsUnique(repo, sha1sSeen)
 			for blobPath := range blobPathChan {
 				blobPaths = append(blobPaths, blobPath)
 			}

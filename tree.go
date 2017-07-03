@@ -6,9 +6,11 @@ import (
 	"github.com/pkg/errors"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 type Tree struct {
+	sync.RWMutex
 	sha1         string
 	entries      []*Entry
 	instantiated bool
@@ -28,6 +30,9 @@ func (self *Tree) Sha1() string {
 }
 
 func (self *Tree) Instantiate(repo *Repo) error {
+	self.Lock()
+	defer self.Unlock()
+
 	if self.instantiated {
 		return nil
 	}
@@ -61,16 +66,16 @@ func (self *Tree) Instantiate(repo *Repo) error {
 		switch type_ {
 		case "tree":
 			// XXX - add switch to use or not use cache?
-			entryTree, ok := repo.TreeCache[entrySha1]
-			if !ok {
+			entryTree, has := repo.treeCache.Get(entrySha1)
+			if !has {
 				entryTree = &Tree{
 					sha1: entrySha1,
 				}
+				repo.treeCache.Set(entrySha1, entryTree)
 				err := entryTree.Instantiate(repo)
 				if err != nil {
 					return errors.Wrapf(err, "Instanting tree %s", entrySha1)
 				}
-				repo.TreeCache[entrySha1] = entryTree
 			}
 			entry.tree = entryTree
 		case "blob":
@@ -93,6 +98,9 @@ func (self *Tree) Instantiate(repo *Repo) error {
 }
 
 func (self *Tree) StreamBlobPathsUnique(repo *Repo, sha1sSeen map[string]bool) (<-chan *BlobPath, <-chan error) {
+	self.RLock()
+	defer self.RUnlock()
+
 	blobPathChan := make(chan *BlobPath)
 	errorChan := make(chan error)
 
@@ -125,13 +133,7 @@ func (self *Tree) _streamBlobPathsUnique(parentPath string, repo *Repo, sha1sSee
 			if !entry.tree.instantiated {
 				panic("not reached")
 			}
-			// XXX - no need for Tree()
-			tree, err := entry.Tree(repo)
-			if err != nil {
-				errorChan <- err
-				return
-			}
-			tree._streamBlobPathsUnique(nextPath, repo, sha1sSeen, blobPathChan, errorChan)
+			entry.tree._streamBlobPathsUnique(nextPath, repo, sha1sSeen, blobPathChan, errorChan)
 		} else {
 			panic("cannot reach")
 		}

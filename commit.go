@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/pkg/errors"
+	//	"log"
 	"strings"
 )
 
@@ -80,16 +81,31 @@ func (self *Commit) Message() string {
 	return self.msg
 }
 
-func (self *Commit) Tree(repo *Repo) (*Tree, error) {
+func (self *Commit) Tree() *Tree {
 	if self.tree != nil {
-		return self.tree, nil
+		return self.tree
+	} else if self.treeSha1 == "" {
+		panic(fmt.Sprintf("Commit %s has no tree sha1", self.sha1))
+	} else {
+		panic(fmt.Sprintf("Commit %s has not had its tree instantiated", self.sha1))
+	}
+}
+
+func (self *Commit) InstantiateTree(repo *Repo) (*Tree, error) {
+	if self.tree != nil {
+		panic(fmt.Sprintf("Commit %s tree has already been intantiated", self.sha1))
 	} else if self.treeSha1 == "" {
 		panic(fmt.Sprintf("Commit %s has no tree sha1", self.sha1))
 	}
 
-	self.tree = &Tree{
-		sha1: self.treeSha1,
+	tree, has := repo.treeCache.Get(self.treeSha1)
+	if has {
+		self.tree = tree
+		return tree, nil
 	}
+
+	self.tree = repo.treeCache.CreateIfNotPresent(self.treeSha1)
+	//	log.Printf("Commit %s is instantiating root tree", self.sha1)
 	err := self.tree.Instantiate(repo)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Instantiating Commit %s Tree=%s", self.sha1, self.treeSha1)

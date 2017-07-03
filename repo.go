@@ -11,7 +11,7 @@ type Repo struct {
 	gitDir string
 
 	// Key = sha1, Value = *Tree
-	TreeCache map[string]*Tree
+	treeCache *treeCacheConcurrentSafe
 }
 
 func NewRepo(directory string) (*Repo, error) {
@@ -47,10 +47,9 @@ func NewRepo(directory string) (*Repo, error) {
 		gitDir = filepath.Join(absDirectory, gitDir)
 	}
 
-	treeCache := make(map[string]*Tree)
 	return &Repo{
 		gitDir:    gitDir,
-		TreeCache: treeCache,
+		treeCache: NewTreeCache(),
 	}, nil
 }
 
